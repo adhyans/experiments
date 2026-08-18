@@ -1,0 +1,18 @@
+{
+  "name": "wifi-live-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Serial -> WebSocket bridge for the ESP32 802.11 sniffer, plus static host for the canvas viewer.",
+  "scripts": {
+    "start": "node server.js",
+    "sim": "node server.js --simulate",
+    "ports": "node server.js --list-ports"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "optionalDependencies": {
+    "serialport": "^12.0.0"
+  }
+}

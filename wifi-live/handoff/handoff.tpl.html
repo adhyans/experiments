@@ -1,0 +1,786 @@
+<title>wifi-live — session handoff</title>
+
+<style>
+  /* ---- tokens -------------------------------------------------------- */
+  :root {
+    --ground:  #fbfcfe;
+    --panel:   #ffffff;
+    --sunk:    #f2f5fa;
+    --ink:     #0f151f;
+    --dim:     #5d6b80;
+    --faint:   #8896a8;
+    --line:    #dde4ee;
+    --hard:    #c3cede;
+
+    --data:    #0b8a80;
+    --mgmt:    #5344cf;
+    --ctrl:    #a86a05;
+
+    --ok:      #167d4a;
+    --warn:    #a86a05;
+    --stop:    #b23c2e;
+
+    --ok-bg:   #e3f5ea;
+    --warn-bg: #fbf0da;
+    --stop-bg: #fbe6e2;
+
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground:  #070a12;
+      --panel:   #0d1220;
+      --sunk:    #070b15;
+      --ink:     #e6edf7;
+      --dim:     #8697ae;
+      --faint:   #66768d;
+      --line:    #1b2436;
+      --hard:    #2a374e;
+
+      --data:    #35e0d0;
+      --mgmt:    #8b7cff;
+      --ctrl:    #f0a83c;
+
+      --ok:      #4ad991;
+      --warn:    #f0a83c;
+      --stop:    #ff7a66;
+
+      --ok-bg:   #0d2a1e;
+      --warn-bg: #2c2011;
+      --stop-bg: #2e1512;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #070a12; --panel: #0d1220; --sunk: #070b15;
+    --ink: #e6edf7; --dim: #8697ae; --faint: #66768d;
+    --line: #1b2436; --hard: #2a374e;
+    --data: #35e0d0; --mgmt: #8b7cff; --ctrl: #f0a83c;
+    --ok: #4ad991; --warn: #f0a83c; --stop: #ff7a66;
+    --ok-bg: #0d2a1e; --warn-bg: #2c2011; --stop-bg: #2e1512;
+  }
+
+  :root[data-theme="light"] {
+    --ground: #fbfcfe; --panel: #ffffff; --sunk: #f2f5fa;
+    --ink: #0f151f; --dim: #5d6b80; --faint: #8896a8;
+    --line: #dde4ee; --hard: #c3cede;
+    --data: #0b8a80; --mgmt: #5344cf; --ctrl: #a86a05;
+    --ok: #167d4a; --warn: #a86a05; --stop: #b23c2e;
+    --ok-bg: #e3f5ea; --warn-bg: #fbf0da; --stop-bg: #fbe6e2;
+  }
+
+  /* ---- base ---------------------------------------------------------- */
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 0 24px 96px;
+  }
+
+  /* ---- masthead ------------------------------------------------------ */
+  header {
+    padding: 56px 0 32px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 40px;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--faint);
+    margin: 0 0 14px;
+  }
+
+  h1 {
+    font-family: var(--mono);
+    font-size: clamp(28px, 5vw, 40px);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    margin: 0 0 14px;
+    text-wrap: balance;
+  }
+
+  .lede {
+    font-size: 17px;
+    color: var(--dim);
+    margin: 0;
+    max-width: 62ch;
+    text-wrap: pretty;
+  }
+
+  /* ---- stat strip ---------------------------------------------------- */
+  .strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    overflow: hidden;
+    margin: 32px 0 0;
+  }
+
+  .tile {
+    background: var(--panel);
+    padding: 16px 18px;
+  }
+
+  .tile .k {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--faint);
+    display: block;
+    margin-bottom: 6px;
+  }
+
+  .tile .v {
+    font-family: var(--mono);
+    font-size: 19px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    display: block;
+    line-height: 1.25;
+  }
+
+  .tile .n {
+    font-size: 12px;
+    color: var(--dim);
+    display: block;
+    margin-top: 2px;
+  }
+
+  /* ---- sections ------------------------------------------------------ */
+  section { margin-top: 56px; }
+
+  h2 {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink);
+    margin: 0 0 6px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--hard);
+  }
+
+  h2 + .note { margin-top: 16px; }
+
+  h3 {
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 32px 0 8px;
+  }
+
+  p { margin: 0 0 14px; max-width: 68ch; text-wrap: pretty; }
+  .note { color: var(--dim); }
+
+  ul, ol { margin: 0 0 14px; padding-left: 20px; max-width: 68ch; }
+  li { margin-bottom: 7px; }
+  li::marker { color: var(--faint); }
+
+  strong { font-weight: 640; }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.875em;
+    background: var(--sunk);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 0.1em 0.36em;
+    color: var(--ink);
+  }
+
+  a { color: var(--data); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; border-radius: 2px; }
+
+  /* ---- status pills -------------------------------------------------- */
+  .pill {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 3px;
+    white-space: nowrap;
+    vertical-align: 1px;
+  }
+  .p-ok   { background: var(--ok-bg);   color: var(--ok); }
+  .p-warn { background: var(--warn-bg); color: var(--warn); }
+  .p-stop { background: var(--stop-bg); color: var(--stop); }
+
+  /* ---- callout ------------------------------------------------------- */
+  .callout {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--ctrl);
+    border-radius: 3px;
+    padding: 18px 20px;
+    margin: 20px 0;
+  }
+  .callout.stop { border-left-color: var(--stop); }
+  .callout.ok   { border-left-color: var(--ok); }
+  .callout > :last-child { margin-bottom: 0; }
+  .callout h3 { margin-top: 0; }
+
+  /* ---- tables -------------------------------------------------------- */
+  .tw { overflow-x: auto; margin: 18px 0; border: 1px solid var(--line); border-radius: 3px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td {
+    text-align: left;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  thead th {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--faint);
+    font-weight: 600;
+    background: var(--sunk);
+    white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td code { background: transparent; border: 0; padding: 0; }
+
+  /* ---- code blocks --------------------------------------------------- */
+  .file {
+    margin: 18px 0 26px;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    overflow: hidden;
+    background: var(--panel);
+  }
+
+  .file-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 14px;
+    background: var(--sunk);
+    border-bottom: 1px solid var(--line);
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+  .file-head .path { font-weight: 600; letter-spacing: -0.01em; }
+  .file-head .meta { color: var(--faint); font-size: 11px; white-space: nowrap; }
+
+  pre {
+    margin: 0;
+    padding: 16px;
+    overflow-x: auto;
+    background: var(--panel);
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.6;
+    tab-size: 2;
+  }
+  pre code { background: transparent; border: 0; padding: 0; font-size: inherit; }
+
+  .sh {
+    background: var(--sunk);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.75;
+    margin: 16px 0;
+    white-space: pre;
+  }
+  .sh .c { color: var(--faint); }
+
+  /* ---- legend swatches ----------------------------------------------- */
+  .sw {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: baseline;
+  }
+  .sw-data { background: var(--data); }
+  .sw-mgmt { background: var(--mgmt); }
+  .sw-ctrl { background: var(--ctrl); }
+
+  footer {
+    margin-top: 72px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--faint);
+    letter-spacing: 0.04em;
+  }
+
+  @media (max-width: 640px) {
+    .wrap { padding: 0 18px 64px; }
+    header { padding-top: 36px; }
+  }
+</style>
+
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">session handoff &middot; resume on another machine</p>
+  <h1>wifi-live</h1>
+  <p class="lede">
+    An ESP32 on the desk listens in 802.11 promiscuous mode and streams every frame
+    header it hears to a browser. Each frame becomes a particle flying inward to the
+    centre, because that is what physically happened: a burst of 2.4&thinsp;GHz left
+    some device and arrived at the antenna.
+  </p>
+
+  <div class="strip">
+    <div class="tile">
+      <span class="k">firmware</span>
+      <span class="v" style="color:var(--ok)">compiles</span>
+      <span class="n">0 warnings &middot; 66% flash</span>
+    </div>
+    <div class="tile">
+      <span class="k">bridge</span>
+      <span class="v" style="color:var(--ok)">6 / 6</span>
+      <span class="n">decode contract tests</span>
+    </div>
+    <div class="tile">
+      <span class="k">viewer</span>
+      <span class="v" style="color:var(--ok)">verified</span>
+      <span class="n">live over websocket</span>
+    </div>
+    <div class="tile">
+      <span class="k">hardware</span>
+      <span class="v" style="color:var(--stop)">blocked</span>
+      <span class="n">board not enumerating</span>
+    </div>
+  </div>
+</header>
+
+<section>
+  <h2>Where this stands</h2>
+
+  <p class="note">
+    Everything that can be built and verified without the board is done. One hardware
+    blocker is open, and it is almost certainly a cable.
+  </p>
+
+  <div class="tw">
+  <table>
+    <thead>
+      <tr><th>Piece</th><th>State</th><th>Evidence</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Firmware</strong><br><span class="note">ESP32 sniffer</span></td>
+        <td><span class="pill p-ok">done</span></td>
+        <td class="note">Compiles for <code>esp32:esp32:esp32</code> with <code>--warnings all</code>, exit 0.
+            877,068 bytes flash (66% of 1.31&thinsp;MB), 51,512 bytes static RAM (15%).</td>
+      </tr>
+      <tr>
+        <td><strong>Bridge</strong><br><span class="note">serial &rarr; websocket</span></td>
+        <td><span class="pill p-ok">done</span></td>
+        <td class="note">6/6 on the firmware-to-bridge CSV contract, including bootloader
+            chatter, truncated lines, and control frames with no addr2.</td>
+      </tr>
+      <tr>
+        <td><strong>Viewer</strong><br><span class="note">canvas renderer</span></td>
+        <td><span class="pill p-ok">done</span></td>
+        <td class="note">Ran ~10 min against live WebSocket traffic with a real browser
+            attached, ~230 frames/sec sustained, 129,861 frames total.</td>
+      </tr>
+      <tr>
+        <td><strong>Toolchain</strong><br><span class="note">arduino-cli + esp32 core</span></td>
+        <td><span class="pill p-ok">done</span></td>
+        <td class="note">esp32:esp32 3.3.11. Installs at 7.3&thinsp;GB, trimmed to 1.6&thinsp;GB,
+            clean rebuild after trim gave byte-identical output.</td>
+      </tr>
+      <tr>
+        <td><strong>Board</strong><br><span class="note">Electrobot ESP-WROOM-32</span></td>
+        <td><span class="pill p-stop">blocked</span></td>
+        <td class="note">Arrived and plugged in. Does not enumerate on USB at all.</td>
+      </tr>
+      <tr>
+        <td><strong>Vendor lookup</strong><br><span class="note">MAC OUI &rarr; name</span></td>
+        <td><span class="pill p-warn">deferred</span></td>
+        <td class="note">Deliberately held until real traffic is flowing. See open decisions.</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section>
+  <h2>The open blocker</h2>
+
+  <div class="callout stop">
+    <h3>The board does not appear on USB</h3>
+    <p>
+      <code>ioreg -p IOUSB -w0 -l</code> lists exactly one device on the bus, a Logitech
+      C920 webcam. No CP2102, no CH340, nothing new. <code>/dev/cu.*</code> shows only
+      <code>Bluetooth-Incoming-Port</code> and <code>debug-console</code>.
+    </p>
+    <p>
+      That rules out a driver problem. A missing driver still shows the device in
+      <code>ioreg</code> with vendor and product IDs, just without a <code>/dev/cu</code>
+      node. Nothing enumerating means this is electrical.
+    </p>
+    <p style="margin-bottom:0">
+      The board was plugged in with the cable that came with it.
+    </p>
+  </div>
+
+  <h3>The check that decides it</h3>
+  <p>Look at the small red power LED on the board.</p>
+
+  <div class="tw">
+  <table>
+    <thead>
+      <tr><th>LED</th><th>Meaning</th><th>Fix</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="num">on</td>
+        <td class="note">Power lines work, data lines do not</td>
+        <td class="note"><strong>Charge-only cable.</strong> Most likely outcome by a wide
+            margin. Cables bundled with cheap electronics are very often power-only.</td>
+      </tr>
+      <tr>
+        <td class="num">off</td>
+        <td class="note">No power reaching the board</td>
+        <td class="note">Cable fully dead, wrong port, or dead board.</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>Try in this order</h3>
+  <ol>
+    <li><strong>A cable you know transfers data.</strong> The one used to move files off a
+        phone, not one from a charger box.</li>
+    <li><strong>Straight into the machine</strong>, not through a hub, dock, or monitor.
+        Some hubs cannot supply the ESP32's transmit current peaks and the board browns
+        out mid-enumeration.</li>
+    <li><strong>The second board.</strong> Two were bought precisely for this. If board two
+        enumerates on the same cable, board one is dead and goes back.</li>
+  </ol>
+
+  <div class="callout">
+    <h3>Also worth knowing before flashing</h3>
+    <p style="margin-bottom:0">
+      The Mac in use is joined to a <strong>5&thinsp;GHz network on channel 157</strong>.
+      The ESP32 radio is 2.4&thinsp;GHz only, so it physically cannot see that network.
+      Point it at the router's 2.4&thinsp;GHz band instead, which nearly every router
+      broadcasts alongside the 5&thinsp;GHz one. Set that channel in
+      <code>CHANNEL</code> before flashing, or set <code>CHANNEL_HOP</code> to
+      <code>true</code> to sweep 1&ndash;13 and find what is out there.
+    </p>
+  </div>
+</section>
+
+<section>
+  <h2>Rebuild on a new machine</h2>
+
+  <p class="note">
+    Two prerequisites: Node (v24 was used here) and <code>arduino-cli</code>. Recreate the
+    tree below, then run these.
+  </p>
+
+  <h3>1 &middot; Project tree</h3>
+  <div class="sh">wifi-live/
+  firmware/wifi-sniffer/wifi-sniffer.ino   <span class="c"># ESP32 sketch, CSV over USB serial</span>
+  bridge/decode.js                         <span class="c"># 802.11 frame decoding</span>
+  bridge/decode.test.js                    <span class="c"># contract tests</span>
+  bridge/server.js                         <span class="c"># serial -&gt; websocket + static host</span>
+  bridge/package.json
+  web/index.html                           <span class="c"># canvas viewer</span>
+  web/app.js</div>
+
+  <h3>2 &middot; Bridge</h3>
+  <div class="sh">cd wifi-live/bridge
+npm install
+node --test decode.test.js   <span class="c"># expect 6 pass</span></div>
+
+  <h3>3 &middot; Run with no hardware</h3>
+  <div class="sh">npm run sim -- --http 7331
+<span class="c"># open http://localhost:7331</span></div>
+  <p class="note">
+    Synthetic traffic with the same shape as the real thing: beacons at a steady 10&thinsp;Hz
+    per AP, bursty QoS data from clients, a haze of ACKs. Six fabricated devices.
+  </p>
+
+  <h3>4 &middot; Toolchain</h3>
+  <div class="sh">curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh \
+  | BINDIR="$PWD/.tools" sh
+
+export PATH="$PWD/.tools:$PATH"
+arduino-cli config init
+arduino-cli config add board_manager.additional_urls \
+  https://espressif.github.io/arduino-esp32/package_esp32_index.json
+arduino-cli core update-index
+arduino-cli core install esp32:esp32</div>
+
+  <div class="callout">
+    <p style="margin-bottom:0">
+      <strong>That install is 7.3&thinsp;GB</strong>, most of it the RISC-V compiler and
+      per-variant libraries for chips this project does not use. A WROOM-32 needs only the
+      Xtensa toolchain, <code>esp32-libs</code>, and <code>esptool_py</code>. Trimming to
+      1.6&thinsp;GB was verified safe with a clean rebuild giving byte-identical output:
+    </p>
+    <div class="sh" style="margin-bottom:0">cd ~/Library/Arduino15
+rm -rf staging \
+  packages/esp32/tools/esp-rv32 \
+  packages/esp32/tools/riscv32-esp-elf-gdb \
+  packages/esp32/tools/esp32{s2,s3,c3,c5,c6,h2,p4,p4_es}-libs</div>
+  </div>
+
+  <h3>5 &middot; Flash and go live</h3>
+  <div class="sh"><span class="c"># set CHANNEL in the .ino to your router's 2.4GHz channel first</span>
+arduino-cli compile --fqbn esp32:esp32:esp32 --warnings all firmware/wifi-sniffer
+arduino-cli board list
+arduino-cli upload -p /dev/cu.usbserial-XXXX --fqbn esp32:esp32:esp32 firmware/wifi-sniffer
+
+cd bridge && npm start -- --http 7331</div>
+  <p class="note">
+    <code>esp32:esp32</code> is the generic "ESP32 Dev Module" target and is correct for any
+    ESP32-WROOM-32 board, 30-pin or 38-pin.
+  </p>
+</section>
+
+<section>
+  <h2>What the viewer draws</h2>
+
+  <p>
+    Centre of the screen is the board. Distance from centre is signal strength. Angle is an
+    FNV-1a hash of the transmitter MAC, so a device always lands in the same place across
+    restarts.
+  </p>
+
+  <div class="tw">
+  <table>
+    <thead>
+      <tr><th>Element</th><th>Encodes</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><span class="sw sw-data"></span>cyan particle</td><td class="note">a data frame</td></tr>
+      <tr><td><span class="sw sw-mgmt"></span>violet particle</td><td class="note">a management frame (beacons dimmed to 0.3 alpha, they are 10/sec per AP forever)</td></tr>
+      <tr><td><span class="sw sw-ctrl"></span>amber particle</td><td class="note">a control frame, mostly the ACKs trailing each data burst</td></tr>
+      <tr><td>particle radius</td><td class="note"><code>0.9 + log2(len) &times; 0.34</code>. A 14-byte ACK is ~2.2&thinsp;px, a 1500-byte frame ~4.4&thinsp;px</td></tr>
+      <tr><td>double ring</td><td class="note">an access point, detected by whether it emits beacons</td></tr>
+      <tr><td>plain dot</td><td class="note">a client</td></tr>
+      <tr><td>rings</td><td class="note">RSSI at &minus;40, &minus;55, &minus;70, &minus;85&thinsp;dBm</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p class="note">
+    Radius is <em>signal strength</em>, not distance. They correlate, but walls, bodies, and
+    multipath all push a device outward without it having moved. A dot that suddenly drifts
+    out is usually someone walking between it and the board.
+  </p>
+</section>
+
+<section>
+  <h2>Gotchas already paid for</h2>
+
+  <p class="note">Each of these cost real debugging time. They are in the code as comments too.</p>
+
+  <h3>Never call Serial.print in the promiscuous callback</h3>
+  <p class="note">
+    It runs inside the WiFi task. Printing there stalls that task, drops frames, and
+    eventually panics. The callback writes to a lock-free SPSC ring buffer;
+    <code>loop()</code> does the slow I/O.
+  </p>
+
+  <h3>USB serial, not WiFi, for the uplink</h3>
+  <p class="note">
+    The ESP32 streaming its own output over the channel it is sniffing creates feedback and
+    costs frames. The cable is boring and correct.
+  </p>
+
+  <h3>Stagger the burst or it fuses into a rail</h3>
+  <p class="note">
+    A burst arrives inside one 50&thinsp;ms batch. Without a random launch delay every frame
+    in it flies in lockstep and the whole burst renders as one solid line instead of
+    individual frames. Only visible in a screenshot, never in the data.
+  </p>
+
+  <h3>Report drops, never swallow them</h3>
+  <p class="note">
+    A silent ring-buffer overflow looks <em>exactly</em> like a quiet channel: few particles,
+    no error anywhere. The firmware emits <code>#&nbsp;dropped&nbsp;N</code> every 5&thinsp;s
+    and the bridge logs it. If it climbs, raise <code>BAUD</code> or <code>RB_SIZE</code>.
+  </p>
+
+  <h3>HTTP 200 does not mean the WebSocket connected</h3>
+  <p class="note">
+    A 200 proves the page was served, nothing more. The check that means something is the
+    viewer count on the server side. This wasted a cycle: the page served fine while zero
+    browsers were ever connected.
+  </p>
+
+  <h3>Do not rewrite a status line with \r next to console.log</h3>
+  <p class="note">
+    The carriage-return status line interleaved with <code>console.log</code> and silently
+    ate every connect and disconnect message, making "no viewer ever connected"
+    indistinguishable from "it scrolled past". Now plain timestamped lines every 5&thinsp;s.
+  </p>
+
+  <h3>Lima holds ports 8080 and 8090</h3>
+  <p class="note">
+    On the machine this was built on, the Lima docker forwarder claims both. Hence
+    <code>--http 7331</code> throughout. Check with
+    <code>lsof -nP -iTCP:PORT -sTCP:LISTEN</code> on a new machine.
+  </p>
+</section>
+
+<section>
+  <h2>Source</h2>
+  <p class="note">
+    Complete and current. Copy these six files into the tree above and it runs.
+  </p>
+
+  <div class="file">
+    <div class="file-head">
+      <span class="path">firmware/wifi-sniffer/wifi-sniffer.ino</span>
+      <span class="meta">Arduino C++ &middot; ESP32</span>
+    </div>
+    <pre><code>{{FILE:firmware/wifi-sniffer/wifi-sniffer.ino}}</code></pre>
+  </div>
+
+  <div class="file">
+    <div class="file-head">
+      <span class="path">bridge/decode.js</span>
+      <span class="meta">802.11 frame decoding</span>
+    </div>
+    <pre><code>{{FILE:bridge/decode.js}}</code></pre>
+  </div>
+
+  <div class="file">
+    <div class="file-head">
+      <span class="path">bridge/decode.test.js</span>
+      <span class="meta">node --test</span>
+    </div>
+    <pre><code>{{FILE:bridge/decode.test.js}}</code></pre>
+  </div>
+
+  <div class="file">
+    <div class="file-head">
+      <span class="path">bridge/server.js</span>
+      <span class="meta">serial &rarr; websocket + static host</span>
+    </div>
+    <pre><code>{{FILE:bridge/server.js}}</code></pre>
+  </div>
+
+  <div class="file">
+    <div class="file-head">
+      <span class="path">bridge/package.json</span>
+      <span class="meta">deps: ws, serialport (optional)</span>
+    </div>
+    <pre><code>{{FILE:bridge/package.json}}</code></pre>
+  </div>
+
+  <div class="file">
+    <div class="file-head">
+      <span class="path">web/index.html</span>
+      <span class="meta">viewer shell + HUD</span>
+    </div>
+    <pre><code>{{FILE:web/index.html}}</code></pre>
+  </div>
+
+  <div class="file">
+    <div class="file-head">
+      <span class="path">web/app.js</span>
+      <span class="meta">canvas renderer</span>
+    </div>
+    <pre><code>{{FILE:web/app.js}}</code></pre>
+  </div>
+</section>
+
+<section>
+  <h2>Open decisions</h2>
+
+  <h3>MAC vendor lookup <span class="pill p-warn">recommended next</span></h3>
+  <p class="note">
+    The first three octets of a MAC are an IEEE OUI. An embedded lookup table turns
+    <code>8E:44:2D</code> into <code>Apple</code>, <code>TP-Link</code>,
+    <code>Amazon</code>. Works fully offline, roughly 20&thinsp;KB trimmed to common
+    vendors. Held deliberately until real traffic flows: the simulator emits six fabricated
+    MACs, so building it now would be testing against its own fixtures. With 30-odd real
+    transmitters on screen it stops being optional.
+  </p>
+
+  <h3>Click a device for detail</h3>
+  <p class="note">
+    Side panel with frame-type breakdown, bytes seen, and an RSSI-over-time trace. Turns
+    "that dot is busy" into "that dot moved three metres away 20 seconds ago."
+  </p>
+
+  <h3>Pause, filters, channel switcher</h3>
+  <p class="note">
+    Nice, but wanted less than expected. The thing is genuinely watchable with no controls.
+  </p>
+
+  <h3>Options B, C, D from the original plan</h3>
+  <div class="tw">
+  <table>
+    <thead><tr><th>Option</th><th>What it shows</th><th>Extra hardware</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>B &middot; CSI waterfall</strong></td>
+        <td class="note">Channel State Information: amplitude and phase across 64 OFDM
+            subcarriers at up to 100&thinsp;Hz. The multipath structure of the room. Visibly
+            reacts to someone walking past, or to a hand waved near the antenna. The closest
+            thing to watching the field itself.</td>
+        <td class="note">None. Same board.</td>
+      </tr>
+      <tr>
+        <td><strong>C &middot; Live spatial heatmap</strong></td>
+        <td class="note">A real spatial field, updating live. Needs many sample points, since
+            one stationary sensor cannot recover space.</td>
+        <td class="note">6&ndash;12 ESP32s reporting over MQTT, interpolated with IDW or RBF.</td>
+      </tr>
+      <tr>
+        <td><strong>D &middot; Direction finding</strong></td>
+        <td class="note">True angle of arrival. An actual arrow pointing at the router.</td>
+        <td class="note">KrakenSDR, 5 coherent channels, ~$500.</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="note">
+    B is the natural next one: no extra parts, and the firmware already has the flash
+    headroom for it.
+  </p>
+</section>
+
+<footer>
+  wifi-live &middot; session handoff &middot; source at github.com/adhyans/experiments
+</footer>
+
+</div>
