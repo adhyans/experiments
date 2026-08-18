@@ -44,7 +44,13 @@ Notes before you order:
 firmware/wifi-sniffer/   ESP32 sketch, CSV over USB serial
 bridge/                  serial -> WebSocket, plus static host for the viewer
 web/                     canvas renderer
+handoff/                 self-contained status page + its generator
+plans/                   why this is built the way it is
 ```
+
+For the reasoning behind the design (why a camera cannot do this, why a stationary
+device cannot produce a spatial map, what each verification step caught), see
+[plans/2026-08-18-option-a-live-packet-flow.md](plans/2026-08-18-option-a-live-packet-flow.md).
 
 ## Run without hardware
 
